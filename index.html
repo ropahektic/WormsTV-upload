@@ -16,8 +16,8 @@
       background: #121418;
       color: #e8eaed;
     }
+    .wrap { width: min(100vw - 2rem, 26rem); }
     .box {
-      width: min(100vw - 2rem, 22rem);
       padding: 1.5rem;
       border-radius: 12px;
       border: 1px solid #2d333b;
@@ -34,6 +34,27 @@
     }
     .drop.on { border-color: #58a6ff; background: rgba(88, 166, 255, 0.06); }
     input[type="file"] { display: none; }
+    label.field {
+      display: block;
+      margin-top: 1rem;
+      font-size: 0.8rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: #8b949e;
+    }
+    input[type="text"] {
+      width: 100%;
+      margin-top: 0.35rem;
+      padding: 0.55rem 0.65rem;
+      border-radius: 8px;
+      border: 1px solid #444c56;
+      background: #0d1117;
+      color: #e8eaed;
+      font-size: 0.95rem;
+    }
+    input[type="text"]::placeholder { color: #6e7681; }
+    .hint { font-size: 0.75rem; color: #6e7681; margin-top: 0.35rem; line-height: 1.35; }
     button {
       width: 100%;
       margin-top: 0.75rem;
@@ -55,27 +76,74 @@
     }
     #out.ok { color: #3fb950; }
     #out.bad { color: #f85149; }
+    .log-panel {
+      margin-top: 1.25rem;
+      padding-top: 1.25rem;
+      border-top: 1px solid #2d333b;
+    }
+    .log-title {
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: #8b949e;
+      margin-bottom: 0.5rem;
+    }
+    #log {
+      font-size: 0.8rem;
+      line-height: 1.45;
+      color: #adbac7;
+      max-height: 11rem;
+      overflow-y: auto;
+      padding-right: 0.25rem;
+    }
+    #log .entry { margin-bottom: 0.45rem; word-break: break-word; }
+    #log .entry strong { color: #e6edf3; font-weight: 600; }
+    #log .empty { color: #6e7681; font-style: italic; }
   </style>
 </head>
 <body>
-  <div class="box">
-    <div class="drop" id="drop" tabindex="0">Choose a .WAgame file</div>
-    <input type="file" id="f" accept=".wagame,.WAgame" />
-    <button type="button" id="go" disabled>Upload</button>
-    <div id="out"></div>
+  <!--
+    GitHub Pages: set API_BASE to your director HTTPS URL (cloudflared etc.), no trailing slash.
+    Served from the director /upload: leave API_BASE empty (same origin).
+  -->
+  <div class="wrap">
+    <div class="box">
+      <div class="drop" id="drop" tabindex="0">Choose a .WAgame file (max 1&nbsp;MB)</div>
+      <input type="file" id="f" accept=".wagame,.WAgame" />
+
+      <label class="field" for="user">Your name <span style="font-weight:400;opacity:.75">(optional)</span></label>
+      <input type="text" id="user" maxlength="64" placeholder="e.g. wormfan_42" autocomplete="nickname" />
+      <p class="hint">Letters, numbers, underscores, hyphens only (saved under Personals/&lt;name&gt;/). Leave empty → inbox.</p>
+
+      <button type="button" id="go" disabled>Upload</button>
+      <div id="out"></div>
+
+      <div class="log-panel">
+        <div class="log-title">Activity (this browser)</div>
+        <div id="log"></div>
+      </div>
+    </div>
   </div>
 
   <script>
     (function () {
-      // Optional: HTTPS origin of your director API (no path, no trailing slash). Empty = this page's origin.
-      var API_BASE = "https://kelkoo-shed-psychology-infringement.trycloudflare.com";
-      // Only if the director uses Bearer auth (PERSONALS_UPLOAD_TOKEN, no PERSONALS_UPLOAD_PUBLIC). Leave empty for open uploads.
+      var MAX_BYTES = 1048576; /* 1 MB — match PERSONALS_UPLOAD_MAX_MB=1 in director .env */
+
+      var API_BASE = "";
       var UPLOAD_TOKEN = "";
+
+      var LOG_KEY = "wormstv_upload_log_v1";
+      var LOG_MAX = 40;
 
       var drop = document.getElementById("drop");
       var file = document.getElementById("f");
+      var userEl = document.getElementById("user");
       var go = document.getElementById("go");
       var out = document.getElementById("out");
+      var logEl = document.getElementById("log");
+
+      var USER_RE = /^[a-zA-Z0-9_-]{1,64}$/;
 
       function baseUrl() {
         var b = String(API_BASE || "").trim().replace(/\/$/, "");
@@ -92,8 +160,68 @@
         return i >= 0 ? s.slice(i + 1) : s;
       }
 
+      function loadLog() {
+        try {
+          var raw = localStorage.getItem(LOG_KEY);
+          var arr = raw ? JSON.parse(raw) : [];
+          return Array.isArray(arr) ? arr : [];
+        } catch (e) {
+          return [];
+        }
+      }
+
+      function saveLog(arr) {
+        try {
+          localStorage.setItem(LOG_KEY, JSON.stringify(arr.slice(0, LOG_MAX)));
+        } catch (e) {}
+      }
+
+      function appendLogEntry(displayFile, byLabel) {
+        var arr = loadLog();
+        arr.unshift({
+          file: displayFile,
+          by: byLabel,
+          at: Date.now(),
+        });
+        saveLog(arr);
+        renderLog();
+      }
+
+      function renderLog() {
+        var arr = loadLog();
+        if (!arr.length) {
+          logEl.innerHTML = '<div class="empty">No uploads logged yet.</div>';
+          return;
+        }
+        var html = "";
+        for (var i = 0; i < arr.length; i++) {
+          var e = arr[i];
+          var when = new Date(e.at).toLocaleString();
+          var who = e.by ? String(e.by) : "anonymous";
+          var fn = e.file ? String(e.file) : "(file)";
+          html +=
+            '<div class="entry"><strong>' +
+            escapeHtml(fn) +
+            "</strong> uploaded by <strong>" +
+            escapeHtml(who) +
+            "</strong> &middot; " +
+            escapeHtml(when) +
+            "</div>";
+        }
+        logEl.innerHTML = html;
+      }
+
+      function escapeHtml(s) {
+        var d = document.createElement("div");
+        d.textContent = s;
+        return d.innerHTML;
+      }
+
       function sync() {
-        go.disabled = !file.files || file.files.length === 0;
+        var okFile = file.files && file.files.length > 0;
+        var szOk = true;
+        if (okFile && file.files[0].size > MAX_BYTES) szOk = false;
+        go.disabled = !okFile || !szOk;
       }
 
       drop.onclick = function () {
@@ -124,18 +252,47 @@
         dt.items.add(x);
         file.files = dt.files;
         sync();
+        warnSize();
       });
 
-      file.onchange = sync;
+      file.onchange = function () {
+        sync();
+        warnSize();
+      };
+
+      function warnSize() {
+        if (file.files && file.files[0] && file.files[0].size > MAX_BYTES) {
+          out.textContent = "File is larger than 1 MB.";
+          out.className = "bad";
+        } else if (out.className === "bad" && out.textContent.indexOf("1 MB") >= 0) {
+          out.textContent = "";
+          out.className = "";
+        }
+      }
 
       go.onclick = function () {
         out.textContent = "";
         out.className = "";
         if (!file.files || !file.files[0]) return;
 
+        if (file.files[0].size > MAX_BYTES) {
+          out.textContent = "File is larger than 1 MB.";
+          out.className = "bad";
+          return;
+        }
+
+        var rawUser = String(userEl.value || "").trim();
+        if (rawUser && !USER_RE.test(rawUser)) {
+          out.textContent =
+            "Name: use only letters, numbers, underscores, and hyphens (1–64 chars), or leave empty.";
+          out.className = "bad";
+          return;
+        }
+
         go.disabled = true;
         var fd = new FormData();
         fd.append("file", file.files[0]);
+        if (rawUser) fd.append("username", rawUser);
 
         var headers = {};
         var tok = String(UPLOAD_TOKEN || "").trim();
@@ -160,8 +317,10 @@
           })
           .then(function (j) {
             var name = baseName(j.path || "");
-            out.innerHTML = "Success.<br><strong>" + name + "</strong>";
+            out.innerHTML = "Success.<br><strong>" + escapeHtml(name) + "</strong>";
             out.className = "ok";
+            var displayBy = rawUser || "inbox";
+            appendLogEntry(name, displayBy);
           })
           .catch(function (err) {
             out.textContent = String(err.message || err);
@@ -171,6 +330,8 @@
             sync();
           });
       };
+
+      renderLog();
     })();
   </script>
 </body>
