@@ -33,6 +33,7 @@
       font-size: 0.95rem;
     }
     .drop.on { border-color: #58a6ff; background: rgba(88, 166, 255, 0.06); }
+    .drop.wait { pointer-events: none; opacity: 0.65; }
     input[type="file"] { display: none; }
     label.field {
       display: block;
@@ -55,6 +56,8 @@
     }
     input[type="text"]::placeholder { color: #6e7681; }
     .hint { font-size: 0.75rem; color: #6e7681; margin-top: 0.35rem; line-height: 1.35; }
+    .hint.warn { color: #d29922; }
+    .hint.err { color: #f85149; }
     button {
       width: 100%;
       margin-top: 0.75rem;
@@ -103,17 +106,15 @@
   </style>
 </head>
 <body>
-  <!--
-    GitHub Pages: set API_BASE to your director HTTPS URL (cloudflared etc.), no trailing slash.
-    Served from the director /upload: leave API_BASE empty (same origin).
-  -->
   <div class="wrap">
     <div class="box">
-      <div class="drop" id="drop" tabindex="0">Choose a .WAgame file (max 1&nbsp;MB)</div>
-      <input type="file" id="f" accept=".wagame,.WAgame" />
+      <div class="drop wait" id="drop" tabindex="0">Loading…</div>
+      <input type="file" id="f" accept=".wagame,.WAgame" disabled />
+
+      <p id="api-line" class="hint" style="min-height:1.35em"></p>
 
       <label class="field" for="user">Your name <span style="font-weight:400;opacity:.75">(optional)</span></label>
-      <input type="text" id="user" maxlength="64" placeholder="e.g. wormfan_42" autocomplete="nickname" />
+      <input type="text" id="user" maxlength="64" placeholder="e.g. wormfan_42" autocomplete="nickname" disabled />
       <p class="hint">Letters, numbers, underscores, hyphens only (saved under Personals/&lt;name&gt;/). Leave empty → inbox.</p>
 
       <button type="button" id="go" disabled>Upload</button>
@@ -128,9 +129,11 @@
 
   <script>
     (function () {
-      var MAX_BYTES = 1048576; /* 1 MB — match PERSONALS_UPLOAD_MAX_MB=1 in director .env */
+      var MAX_BYTES = 1048576;
 
-      var API_BASE = "";
+      /** Only for local testing: paste a full https API origin here. Production uses api-base.json from GitHub. */
+      var DEV_API_BASE = "";
+
       var UPLOAD_TOKEN = "";
 
       var LOG_KEY = "wormstv_upload_log_v1";
@@ -142,12 +145,100 @@
       var go = document.getElementById("go");
       var out = document.getElementById("out");
       var logEl = document.getElementById("log");
+      var apiLine = document.getElementById("api-line");
 
       var USER_RE = /^[a-zA-Z0-9_-]{1,64}$/;
 
+      /** @type {string | null} */
+      var resolvedBase = null;
+      var apiReady = false;
+
+      function stripBase(u) {
+        return String(u || "")
+          .trim()
+          .replace(/\/$/, "");
+      }
+
+      function isGitHubPages() {
+        return /\.github\.io$/i.test(location.hostname);
+      }
+
+      function pageDirHref() {
+        var h = location.href;
+        return h.endsWith("/") ? h : h + "/";
+      }
+
+      function unlockUi() {
+        drop.classList.remove("wait");
+        drop.textContent = "Choose a .WAgame file (max 1\u00a0MB)";
+        file.disabled = false;
+        userEl.disabled = false;
+        apiReady = true;
+        sync();
+      }
+
+      function lockUi(msg, asError) {
+        drop.classList.add("wait");
+        drop.textContent = "Unavailable";
+        file.disabled = true;
+        userEl.disabled = true;
+        go.disabled = true;
+        apiLine.textContent = msg;
+        apiLine.className = "hint " + (asError ? "err" : "warn");
+        if (asError) {
+          out.textContent = msg;
+          out.className = "bad";
+        }
+      }
+
+      /** `api-base.json` lives next to this file on GitHub Pages; on the director it is at `/api-base.json`. */
+      function apiConfigUrl() {
+        if (isGitHubPages()) {
+          return new URL("api-base.json", pageDirHref()).href;
+        }
+        return new URL("/api-base.json", location.origin).href;
+      }
+
+      /** Loads api-base.json next to this page; fallback is same origin (director /upload). */
+      function resolveApiBase() {
+        var dev = stripBase(DEV_API_BASE);
+        if (dev && /^https:\/\//i.test(dev)) {
+          resolvedBase = dev;
+          apiLine.textContent = "Dev override (DEV_API_BASE).";
+          apiLine.className = "hint warn";
+          return Promise.resolve();
+        }
+
+        var cfgUrl = apiConfigUrl();
+        return fetch(cfgUrl, { cache: "no-store" })
+          .then(function (r) {
+            if (!r.ok) throw new Error("no api-base");
+            return r.json();
+          })
+          .then(function (j) {
+            var u = j && typeof j.url === "string" ? stripBase(j.url) : "";
+            if (u && /^https:\/\//i.test(u)) {
+              resolvedBase = u;
+              apiLine.textContent = "";
+              apiLine.className = "hint";
+              return;
+            }
+            throw new Error("empty url");
+          })
+          .catch(function () {
+            resolvedBase = location.origin;
+            if (isGitHubPages()) {
+              throw new Error(
+                "Missing or invalid api-base.json. On the director PC set UPLOAD_PAGE_API_URL in .env (your https tunnel), then run: node web/replay-upload/publish-gh.mjs",
+              );
+            }
+            apiLine.textContent = "API: " + resolvedBase + " (open this page from the director, or publish api-base.json for GitHub Pages).";
+            apiLine.className = "hint";
+          });
+      }
+
       function baseUrl() {
-        var b = String(API_BASE || "").trim().replace(/\/$/, "");
-        return b || location.origin;
+        return resolvedBase || location.origin;
       }
 
       function endpoint() {
@@ -218,6 +309,10 @@
       }
 
       function sync() {
+        if (!apiReady) {
+          go.disabled = true;
+          return;
+        }
         var okFile = file.files && file.files.length > 0;
         var szOk = true;
         if (okFile && file.files[0].size > MAX_BYTES) szOk = false;
@@ -273,6 +368,11 @@
       go.onclick = function () {
         out.textContent = "";
         out.className = "";
+        if (!apiReady || !resolvedBase) {
+          out.textContent = "API not ready yet.";
+          out.className = "bad";
+          return;
+        }
         if (!file.files || !file.files[0]) return;
 
         if (file.files[0].size > MAX_BYTES) {
@@ -332,6 +432,14 @@
       };
 
       renderLog();
+
+      resolveApiBase()
+        .then(function () {
+          unlockUi();
+        })
+        .catch(function (err) {
+          lockUi(String(err.message || err), true);
+        });
     })();
   </script>
 </body>
