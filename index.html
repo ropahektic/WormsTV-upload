@@ -3,209 +3,147 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>WormsTV — upload .WAgame</title>
+  <title>Upload replay</title>
   <style>
-    :root {
-      --bg: #0f1419;
-      --panel: #1a2332;
-      --text: #e6edf3;
-      --muted: #8b9bab;
-      --accent: #58a6ff;
-      --ok: #3fb950;
-      --err: #f85149;
-      --border: #30363d;
-    }
     * { box-sizing: border-box; }
     body {
       margin: 0;
       min-height: 100vh;
-      font-family: ui-sans-serif, system-ui, Segoe UI, Roboto, sans-serif;
-      background: var(--bg);
-      color: var(--text);
-      line-height: 1.5;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: system-ui, Segoe UI, sans-serif;
+      background: #121418;
+      color: #e8eaed;
     }
-    .wrap { max-width: 36rem; margin: 0 auto; padding: 2rem 1.25rem 4rem; }
-    h1 { font-size: 1.35rem; font-weight: 600; margin: 0 0 0.5rem; }
-    p.sub { color: var(--muted); font-size: 0.9rem; margin: 0 0 1.5rem; }
-    .card {
-      background: var(--panel);
-      border: 1px solid var(--border);
+    .box {
+      width: min(100vw - 2rem, 22rem);
+      padding: 1.5rem;
+      border-radius: 12px;
+      border: 1px solid #2d333b;
+      background: #1c2128;
+    }
+    .drop {
+      padding: 2.25rem 1rem;
+      text-align: center;
+      border: 2px dashed #444c56;
       border-radius: 10px;
-      padding: 1.25rem 1.25rem 1rem;
-      margin-bottom: 1rem;
-    }
-    label { display: block; font-size: 0.8rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); margin-bottom: 0.35rem; }
-    input[type="text"], input[type="password"], input[type="url"] {
-      width: 100%;
-      padding: 0.55rem 0.65rem;
-      border-radius: 6px;
-      border: 1px solid var(--border);
-      background: var(--bg);
-      color: var(--text);
+      cursor: pointer;
+      color: #8b949e;
       font-size: 0.95rem;
     }
-    input:focus { outline: 2px solid var(--accent); outline-offset: 1px; border-color: transparent; }
-    .hint { font-size: 0.8rem; color: var(--muted); margin: 0.35rem 0 0; }
-    .drop {
-      margin-top: 1rem;
-      padding: 2rem 1rem;
-      border: 2px dashed var(--border);
-      border-radius: 10px;
-      text-align: center;
-      color: var(--muted);
-      cursor: pointer;
-      transition: border-color 0.15s, background 0.15s;
-    }
-    .drop.drag { border-color: var(--accent); background: rgba(88, 166, 255, 0.06); }
-    .drop strong { color: var(--text); }
+    .drop.on { border-color: #58a6ff; background: rgba(88, 166, 255, 0.06); }
     input[type="file"] { display: none; }
     button {
-      margin-top: 1rem;
       width: 100%;
-      padding: 0.65rem 1rem;
+      margin-top: 0.75rem;
+      padding: 0.65rem;
       font-size: 1rem;
       font-weight: 600;
-      color: var(--bg);
-      background: var(--accent);
       border: none;
       border-radius: 8px;
+      background: #58a6ff;
+      color: #0d1117;
       cursor: pointer;
     }
-    button:disabled { opacity: 0.5; cursor: not-allowed; }
-    button:hover:not(:disabled) { filter: brightness(1.08); }
-    #status { margin-top: 1rem; font-size: 0.9rem; white-space: pre-wrap; word-break: break-word; }
-    #status.ok { color: var(--ok); }
-    #status.bad { color: var(--err); }
-    code { font-size: 0.85em; background: var(--bg); padding: 0.15em 0.35em; border-radius: 4px; }
-    details { margin-top: 1.5rem; font-size: 0.85rem; color: var(--muted); }
-    details summary { cursor: pointer; color: var(--text); }
+    button:disabled { opacity: 0.45; cursor: not-allowed; }
+    #out {
+      margin-top: 1rem;
+      text-align: center;
+      font-size: 0.95rem;
+      min-height: 1.4em;
+    }
+    #out.ok { color: #3fb950; }
+    #out.bad { color: #f85149; }
   </style>
 </head>
 <body>
-  <div class="wrap">
-    <h1>Upload a Worms replay</h1>
-    <p class="sub">Sends one <code>.WAgame</code> file to the WormsTV director (Personals / inbox). HTTPS → HTTPS only.</p>
-
-    <div class="card">
-      <label for="apiBase">Director API base URL</label>
-      <input type="url" id="apiBase" name="apiBase" placeholder="https://wormstv-api.example.com" autocomplete="off" />
-      <p class="hint">No trailing slash. Leave empty if this page is served from the <strong>same</strong> host and port as the overlay API (e.g. you opened this file from the director’s <code>/upload</code>).</p>
-
-      <label for="token" style="margin-top: 1rem">Upload token</label>
-      <input type="password" id="token" name="token" placeholder="Same as PERSONALS_UPLOAD_TOKEN in .env" autocomplete="current-password" />
-      <p class="hint">Stored only in your browser (localStorage) after a successful upload — not on any server.</p>
-    </div>
-
-    <div class="card">
-      <label>Optional subfolder</label>
-      <input type="text" id="username" name="username" placeholder="inbox (default)" pattern="[a-zA-Z0-9_-]*" maxlength="64" autocomplete="off" />
-      <p class="hint">Maps to <code>Personals/&lt;name&gt;/</code>. Letters, numbers, <code>_</code> <code>-</code> only. Empty = <code>inbox</code>.</p>
-
-      <div class="drop" id="drop" tabindex="0" role="button" aria-label="Choose file">
-        <strong>Choose a file</strong> or drag a <code>.WAgame</code> here
-      </div>
-      <input type="file" id="file" accept=".wagame,.WAgame" />
-      <button type="button" id="submit" disabled>Upload</button>
-      <div id="status"></div>
-    </div>
-
-    <details>
-      <summary>Why isn’t my home IP:port enough?</summary>
-      <p>Browsers on <code>https://</code> (Cloudflare, etc.) block <code>http://</code> API calls. Expose the director with HTTPS via Cloudflare Tunnel (see repo <code>docs/internet-replay-upload.md</code>).</p>
-    </details>
+  <div class="box">
+    <div class="drop" id="drop" tabindex="0">Choose a .WAgame file</div>
+    <input type="file" id="f" accept=".wagame,.WAgame" />
+    <button type="button" id="go" disabled>Upload</button>
+    <div id="out"></div>
   </div>
 
   <script>
     (function () {
-      var LS_BASE = "wormstv_api_base";
-      var LS_TOKEN = "wormstv_upload_token";
+      // Optional: HTTPS origin of your director API (no path, no trailing slash). Empty = this page's origin.
+      var API_BASE = "";
+      // Only if the director uses Bearer auth (PERSONALS_UPLOAD_TOKEN, no PERSONALS_UPLOAD_PUBLIC). Leave empty for open uploads.
+      var UPLOAD_TOKEN = "";
 
-      var apiBase = document.getElementById("apiBase");
-      var token = document.getElementById("token");
-      var username = document.getElementById("username");
-      var file = document.getElementById("file");
       var drop = document.getElementById("drop");
-      var submit = document.getElementById("submit");
-      var status = document.getElementById("status");
+      var file = document.getElementById("f");
+      var go = document.getElementById("go");
+      var out = document.getElementById("out");
 
-      try {
-        if (localStorage.getItem(LS_BASE)) apiBase.value = localStorage.getItem(LS_BASE);
-        if (localStorage.getItem(LS_TOKEN)) token.value = localStorage.getItem(LS_TOKEN);
-      } catch (e) {}
-
-      function setStatus(text, cls) {
-        status.textContent = text || "";
-        status.className = cls || "";
+      function baseUrl() {
+        var b = String(API_BASE || "").trim().replace(/\/$/, "");
+        return b || location.origin;
       }
 
       function endpoint() {
-        var b = apiBase.value.trim().replace(/\/$/, "");
-        if (!b) b = location.origin;
-        return b + "/api/personals-upload";
+        return baseUrl() + "/api/personals-upload";
       }
 
-      function syncBtn() {
-        submit.disabled = !file.files || file.files.length === 0 || !token.value.trim();
+      function baseName(p) {
+        var s = String(p).replace(/\\/g, "/");
+        var i = s.lastIndexOf("/");
+        return i >= 0 ? s.slice(i + 1) : s;
       }
 
-      file.addEventListener("change", syncBtn);
-      token.addEventListener("input", syncBtn);
+      function sync() {
+        go.disabled = !file.files || file.files.length === 0;
+      }
 
-      drop.addEventListener("click", function () {
+      drop.onclick = function () {
         file.click();
-      });
-      drop.addEventListener("keydown", function (e) {
+      };
+      drop.onkeydown = function (e) {
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault();
           file.click();
         }
-      });
-
+      };
       ["dragenter", "dragover"].forEach(function (ev) {
         drop.addEventListener(ev, function (e) {
           e.preventDefault();
-          e.stopPropagation();
-          drop.classList.add("drag");
+          drop.classList.add("on");
         });
       });
       ["dragleave", "drop"].forEach(function (ev) {
         drop.addEventListener(ev, function (e) {
           e.preventDefault();
-          e.stopPropagation();
-          drop.classList.remove("drag");
+          drop.classList.remove("on");
         });
       });
       drop.addEventListener("drop", function (e) {
-        var f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
-        if (!f) return;
+        var x = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+        if (!x) return;
         var dt = new DataTransfer();
-        dt.items.add(f);
+        dt.items.add(x);
         file.files = dt.files;
-        syncBtn();
+        sync();
       });
 
-      submit.addEventListener("click", function () {
-        setStatus("");
-        if (!file.files || !file.files[0]) {
-          setStatus("Pick a .WAgame file first.", "bad");
-          return;
-        }
-        var t = token.value.trim();
-        if (!t) {
-          setStatus("Enter the upload token.", "bad");
-          return;
-        }
+      file.onchange = sync;
+
+      go.onclick = function () {
+        out.textContent = "";
+        out.className = "";
+        if (!file.files || !file.files[0]) return;
+
+        go.disabled = true;
         var fd = new FormData();
         fd.append("file", file.files[0]);
-        var u = username.value.trim();
-        if (u) fd.append("username", u);
 
-        submit.disabled = true;
-        setStatus("Uploading…");
+        var headers = {};
+        var tok = String(UPLOAD_TOKEN || "").trim();
+        if (tok) headers.Authorization = "Bearer " + tok;
 
         fetch(endpoint(), {
           method: "POST",
-          headers: { Authorization: "Bearer " + t },
+          headers: headers,
           body: fd,
         })
           .then(function (r) {
@@ -213,29 +151,26 @@
               var j = {};
               try {
                 j = txt ? JSON.parse(txt) : {};
-              } catch (x) {
-                throw new Error(txt || "HTTP " + r.status);
+              } catch (e) {
+                throw new Error(txt || "Error");
               }
-              if (!r.ok) throw new Error(j.detail || j.error || "HTTP " + r.status);
+              if (!r.ok) throw new Error(j.detail || j.error || "Upload failed");
               return j;
             });
           })
           .then(function (j) {
-            try {
-              localStorage.setItem(LS_BASE, apiBase.value.trim());
-              localStorage.setItem(LS_TOKEN, t);
-            } catch (e) {}
-            var msg = "Uploaded OK.\n" + (j.path || "");
-            if (j.searchIndexed === false && j.searchNote) msg += "\n\n" + j.searchNote;
-            setStatus(msg, "ok");
+            var name = baseName(j.path || "");
+            out.innerHTML = "Success.<br><strong>" + name + "</strong>";
+            out.className = "ok";
           })
           .catch(function (err) {
-            setStatus(String(err.message || err), "bad");
+            out.textContent = String(err.message || err);
+            out.className = "bad";
           })
           .finally(function () {
-            syncBtn();
+            sync();
           });
-      });
+      };
     })();
   </script>
 </body>
