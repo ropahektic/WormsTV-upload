@@ -121,7 +121,7 @@
       <div id="out"></div>
 
       <div class="log-panel">
-        <div class="log-title">Activity (this browser)</div>
+        <div class="log-title">Recent uploads (everyone)</div>
         <div id="log"></div>
       </div>
     </div>
@@ -135,9 +135,6 @@
       var DEV_API_BASE = "";
 
       var UPLOAD_TOKEN = "";
-
-      var LOG_KEY = "wormstv_upload_log_v1";
-      var LOG_MAX = 40;
 
       var drop = document.getElementById("drop");
       var file = document.getElementById("f");
@@ -175,6 +172,7 @@
         userEl.disabled = false;
         apiReady = true;
         sync();
+        void refreshServerLog();
       }
 
       function lockUi(msg, asError) {
@@ -245,43 +243,43 @@
         return baseUrl() + "/api/personals-upload";
       }
 
+      function logEndpoint() {
+        return baseUrl() + "/api/upload-log";
+      }
+
       function baseName(p) {
         var s = String(p).replace(/\\/g, "/");
         var i = s.lastIndexOf("/");
         return i >= 0 ? s.slice(i + 1) : s;
       }
 
-      function loadLog() {
-        try {
-          var raw = localStorage.getItem(LOG_KEY);
-          var arr = raw ? JSON.parse(raw) : [];
-          return Array.isArray(arr) ? arr : [];
-        } catch (e) {
-          return [];
-        }
+      function refreshServerLog() {
+        if (!resolvedBase) return Promise.resolve();
+        return fetch(logEndpoint(), { cache: "no-store" })
+          .then(function (r) {
+            return r.text().then(function (txt) {
+              var j = {};
+              try {
+                j = txt ? JSON.parse(txt) : {};
+              } catch (e) {
+                j = {};
+              }
+              if (!r.ok) throw new Error("log fetch failed");
+              return j;
+            });
+          })
+          .then(function (j) {
+            var entries = j && Array.isArray(j.entries) ? j.entries : [];
+            renderLogEntries(entries);
+          })
+          .catch(function () {
+            logEl.innerHTML = '<div class="empty">Could not load upload log.</div>';
+          });
       }
 
-      function saveLog(arr) {
-        try {
-          localStorage.setItem(LOG_KEY, JSON.stringify(arr.slice(0, LOG_MAX)));
-        } catch (e) {}
-      }
-
-      function appendLogEntry(displayFile, byLabel) {
-        var arr = loadLog();
-        arr.unshift({
-          file: displayFile,
-          by: byLabel,
-          at: Date.now(),
-        });
-        saveLog(arr);
-        renderLog();
-      }
-
-      function renderLog() {
-        var arr = loadLog();
+      function renderLogEntries(arr) {
         if (!arr.length) {
-          logEl.innerHTML = '<div class="empty">No uploads logged yet.</div>';
+          logEl.innerHTML = '<div class="empty">No uploads yet.</div>';
           return;
         }
         var html = "";
@@ -419,8 +417,7 @@
             var name = baseName(j.path || "");
             out.innerHTML = "Success.<br><strong>" + escapeHtml(name) + "</strong>";
             out.className = "ok";
-            var displayBy = rawUser || "inbox";
-            appendLogEntry(name, displayBy);
+            void refreshServerLog();
           })
           .catch(function (err) {
             out.textContent = String(err.message || err);
@@ -430,8 +427,6 @@
             sync();
           });
       };
-
-      renderLog();
 
       resolveApiBase()
         .then(function () {
