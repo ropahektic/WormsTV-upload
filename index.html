@@ -161,8 +161,7 @@
       }
 
       function pageDirHref() {
-        var h = location.href;
-        return h.endsWith("/") ? h : h + "/";
+        return new URL(".", location.href).href;
       }
 
       function unlockUi() {
